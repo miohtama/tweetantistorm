@@ -7,6 +7,8 @@ authors = ["Mikko Ohtamaa <mikko@opensourcehacker.com>"]
 [tool.poetry.dependencies]
 python = "^3.8"
 tweepy = "^3.10.0"
+click = "^7.1.2"
+coloredlogs = "^15.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
@@ -14,3 +16,6 @@ pytest = "^5.2"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+tweetantistorm = "tweetantistorm.main:main"
