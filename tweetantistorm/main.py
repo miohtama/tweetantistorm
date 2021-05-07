@@ -65,7 +65,7 @@ def extract_thread(replies: List[Status]) -> List[Status]:
 
     # Sort thread from the start to the end
     replies = sorted(replies, key=lambda r: r.created_at)
-    for r in replies[1:]:
+    for idx, r in enumerate(replies[1:]):
 
         if r.in_reply_to_status_id != current_head:
             continue
@@ -74,7 +74,9 @@ def extract_thread(replies: List[Status]) -> List[Status]:
             continue
 
         extracted.append(r)
+        logger.debug("Index %d, current head: %s, next head: %s", idx, current_head, r.id)
         current_head = r.id
+
 
     return extracted
 
