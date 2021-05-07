@@ -1,3 +1,5 @@
+import datetime
+
 import click
 import tweepy
 import logging
@@ -20,34 +22,20 @@ def fetch_replies(api: API, username, tweet_id) -> List[Status]:
     """
 
     out = []
-    replies = tweepy.Cursor(api.search, q='to:{}'.format(username),
-                            since_id=tweet_id, tweet_mode='extended').items()
+    #replies = tweepy.Cursor(api.search, q='to:{}'.format(username),
+    #                        since_id=tweet_id, tweet_mode='extended').items()
+
+    potential_tweets = []
     while True:
-        try:
-            reply = replies.next()
 
-            if not hasattr(reply, 'in_reply_to_status_id_str'):
-                continue
+        # Go through the timeline
+        res = api.search(q='to:{}'.format(username), since_id=tweet_id, count=1000)
 
-            if reply.in_reply_to_status_id == tweet_id:
-                logger.info("reply of tweet:{}".format(reply.full_text))
+        for r in res:
+            print(r.created_at, r.id, r.text)
+            potential_tweets.append(r)
 
-            out.append(reply)
-
-        except tweepy.RateLimitError as e:
-            logger.warning("Twitter api rate limit reached".format(e))
-            time.sleep(60)
-            continue
-
-        except tweepy.TweepError as e:
-            logger.error("Tweepy error occured:{}".format(e))
-            break
-
-        except StopIteration:
-            break
-
-        except Exception as e:
-            logger.error("Failed while fetching replies {}".format(e))
+        if res[0].created_at < datetime.datetime(2021, 4, 1):
             break
 
     return out
@@ -57,25 +45,34 @@ def extract_thread(replies: List[Status]) -> List[Status]:
     """Get only the original author replies to the thread.
 
     Assume the first reply is the start of the thread.
+
+    Handle special case the author does not reply to the latest tweet, but instead
+    an older one, when writing the thread.
     """
 
     original_user = replies[0].user.screen_name
-    current_head = replies[0].id
+    current_heads = [replies[0].id]
     extracted = [replies[0]]
 
     # Sort thread from the start to the end
     replies = sorted(replies, key=lambda r: r.created_at)
+
+    # Map out tweet order and try to figure out some accidental branching
     for idx, r in enumerate(replies[1:]):
 
-        if r.in_reply_to_status_id != current_head:
+        latest_head = current_heads[-1]
+
+        if r.in_reply_to_status_id not in current_heads:
+            logger.debug("Tweet %s was not reply to the current head %s, was reply to %s: %s", r.id, latest_head, r.in_reply_to_status_id, r.full_text)
             continue
 
         if r.user.screen_name != original_user:
+            # Somebody else tweeted in the middle
             continue
 
         extracted.append(r)
-        logger.debug("Index %d, current head: %s, next head: %s", idx, current_head, r.id)
-        current_head = r.id
+        logger.debug("Index %d, current head: %s, next head: %s: %s", idx, latest_head, r.id, r.full_text)
+        current_heads.append(r.id)
 
 
     return extracted
@@ -110,8 +107,8 @@ def main(consumer_key, consumer_secret, log_level, tweet_id):
     unsorted = [status] + replies
     logger.info("Unsorted replies blob is %d tweets long", len(unsorted))
 
-    thread = extract_thread(unsorted)
-    logger.info("The thread has %d tweets", len(thread))
+    # thread = extract_thread(unsorted)
+    # logger.info("The thread has %d tweets", len(thread))
     # dump_thread(thread)
 
 
