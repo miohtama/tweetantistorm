@@ -11,6 +11,7 @@ click = "^7.1.2"
 coloredlogs = "^15.0"
 Pygments = "^2.9.0"
 ipdb = "^0.13.7"
+requests-html = "^0.10.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
