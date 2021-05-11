@@ -10,7 +10,8 @@ import logging
 import time
 from typing import Optional, List
 import requests
-from requests_html import HTMLSession
+from lxml import etree
+from requests_html import HTMLSession, Element
 
 from tweepy import API, Status
 
@@ -111,18 +112,26 @@ def scrape(link, output_path):
     with open(os.path.join(output_path, "out.md"), "wt") as md:
 
         for idx, t in enumerate(tweets):
-            # Replace images
-            for img in t.find("img"):
+
+            t = t.element
+            # Replace image sources with locally exported versions
+            # img: Element
+
+            for img in t.cssselect("img"):
                 # Threader app specific
                 # <Element 'img' alt='' src='/images/1px.png' data-src='https://pbs.twimg.com/media/E0i_12IWQAMJL15.jpg'>
-                src = img.attrs.get("data-src") or img.attrs.get("src")
+                src = img.attrib.get("data-src") or img.attrib.get("src")
                 if src:
-                    img.attrs["src"] = image_rewriter.rewrite_image_url(src)
-                    if "data-src" in img.attrs:
-                        del img.attrs["data-src"]
+                    new_url = image_rewriter.rewrite_image_url(src)
+                    if "data-src" in img.attrib:
+                        #import ipdb ; ipdb.set_trace()
+                        # img.element.remove("data-src")
+                        del img.attrib["data-src"]
+                    img.set("src", new_url)
 
+            src = etree.tostring(t, encoding="unicode").strip()
             md.write(f"\n\n <!-- Tweet {idx}-->\n")
-            md.write(t.html)
+            md.write(src)
 
 
 @click.command()
