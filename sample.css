@@ -22,3 +22,10 @@
     font-size: .8rem;
     margin-top: 10px;
 }
+
+.entity-url-preview {
+    border: 1px #e1e8ed solid;
+    border-radius: 8px;
+    margin: 10px 0 0;
+}
+

@@ -1,12 +1,10 @@
-import datetime
-
 import json
 import os.path
 import shutil
+import textwrap
 from urllib.parse import urlparse
 
 import click
-import tweepy
 import logging
 import time
 from typing import Optional, List
@@ -15,10 +13,8 @@ from lxml import etree
 from lxml.html import HtmlElement
 from requests_html import HTMLSession, Element
 
-from tweepy import API, Status
 
 from tweetantistorm.logs import setup_logging
-from tweetantistorm.console import print_colorful_json
 
 
 logger: Optional[logging.Logger] = None
@@ -121,11 +117,11 @@ class ImageRewriterJSONifiedState:
             return os.path.join(self.path_prefix, self.state["mappings"][image_url])
 
 
-def scrape(link, output_path):
+def scrape(link, output_path, image_src_prefix):
     """Read Threader app HTML output and modify it for a local blog post."""
 
     session = requests.Session()
-    image_rewriter = ImageRewriterJSONifiedState(session=session, output_path=output_path)
+    image_rewriter = ImageRewriterJSONifiedState(session=session, output_path=output_path, path_prefix=image_src_prefix)
 
     image_rewriter.restore()
 
@@ -161,8 +157,14 @@ def scrape(link, output_path):
                 assert len(pic) == 1
                 t.insert(0, pic[0])
 
-            src = etree.tostring(t, encoding="unicode", method="html").strip()
-            body += f"\n\n <!-- Tweet {idx + 1}-->\n"
+            # Fix hashtag links
+            for hashtag in t.cssselect("entity-hashtag"):
+                orig_href = hashtag.attrib["href"]
+                hashtag.set("href", "https://twitter.com" + orig_href)
+
+            src = f"\n\n <!-- Tweet {idx + 1}-->\n"
+            src += etree.tostring(t, encoding="unicode", method="html").strip()
+            src = textwrap.indent(src, prefix="                            ")
             body += src
 
         md.write(TEMPLATE.format(body=body))
@@ -175,7 +177,8 @@ def scrape(link, output_path):
 @click.option('--thread-reader-app-link', default=None, help='Link to the threaderapp page', required=True)
 @click.option('--log-level', default="info", help='Python logging level', required=False)
 @click.option('--output-folder', default="out", help='Output folder', required=False)
-def main(thread_reader_app_link, log_level, output_folder):
+@click.option('--image-src-prefix', default="out", help='Prefix for image sources for blog hosting', required=False)
+def main(thread_reader_app_link, log_level, output_folder, image_src_prefix):
     """Tweetstorm scraper."""
     global logger
     logger = setup_logging(log_level)
@@ -185,11 +188,8 @@ def main(thread_reader_app_link, log_level, output_folder):
         logger.info("Storing output in %s", output_folder)
         os.makedirs(output_folder)
 
-    scrape(thread_reader_app_link, output_folder)
+    scrape(thread_reader_app_link, output_folder, image_src_prefix)
 
-    # thread = extract_thread(unsorted)
-    # logger.info("The thread has %d tweets", len(thread))
-    # dump_thread(thread)
 
 
 
