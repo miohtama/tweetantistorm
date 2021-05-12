@@ -1,0 +1,24 @@
+.content-tweet {
+    line-height: 1.5;
+    margin-bottom: 20px;
+    font-size: 1.7rem;
+}
+
+.nop {
+    color: #a4a4a4;
+}
+
+.entity-image {
+    text-align: center;
+    display: block;
+}
+
+.entity-image img, .entity-video video, .entity-embed .youtube-player, .entity-video-gif video, .entity-embed .twitter-player blockquote {
+    width: 100%;
+    background: #fff;
+    border-radius: 15px;
+    border: solid 1px #e1e8ed;
+    max-width: 100%;
+    font-size: .8rem;
+    margin-top: 10px;
+}

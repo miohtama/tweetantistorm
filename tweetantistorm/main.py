@@ -2,6 +2,7 @@ import datetime
 
 import json
 import os.path
+import shutil
 from urllib.parse import urlparse
 
 import click
@@ -11,6 +12,7 @@ import time
 from typing import Optional, List
 import requests
 from lxml import etree
+from lxml.html import HtmlElement
 from requests_html import HTMLSession, Element
 
 from tweepy import API, Status
@@ -20,6 +22,28 @@ from tweetantistorm.console import print_colorful_json
 
 
 logger: Optional[logging.Logger] = None
+
+
+TEMPLATE = """
+<html>
+    <head>
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+        <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
+        <link rel="stylesheet" href="sample.css"></link>
+    </head>
+    <body>
+        <div class="container narrow pb-5">
+            <div class="row">
+                <div class="col-12">
+                    <div class="tweetstorm">
+                        {body}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>
+"""
 
 
 class ImageRewriterJSONifiedState:
@@ -98,6 +122,7 @@ class ImageRewriterJSONifiedState:
 
 
 def scrape(link, output_path):
+    """Read Threader app HTML output and modify it for a local blog post."""
 
     session = requests.Session()
     image_rewriter = ImageRewriterJSONifiedState(session=session, output_path=output_path)
@@ -109,14 +134,17 @@ def scrape(link, output_path):
     tweets = r.html.find("[data-controller='mentions'] .content-tweet")
     logger.info("Found %d tweets", len(tweets))
 
-    with open(os.path.join(output_path, "out.md"), "wt") as md:
+    body = ""
 
-        for idx, t in enumerate(tweets):
+    with open(os.path.join(output_path, "out.html"), "wt") as md:
 
-            t = t.element
-            # Replace image sources with locally exported versions
-            # img: Element
+        for idx, request_element in enumerate(tweets):
 
+            # Manipulate the individual tweet HTML from Threader App in place
+            # to make it more suiatble for the blog
+            t: HtmlElement = request_element.element
+
+            # Scrape images and rewrite srcs using local URLs
             for img in t.cssselect("img"):
                 # Threader app specific
                 # <Element 'img' alt='' src='/images/1px.png' data-src='https://pbs.twimg.com/media/E0i_12IWQAMJL15.jpg'>
@@ -124,14 +152,23 @@ def scrape(link, output_path):
                 if src:
                     new_url = image_rewriter.rewrite_image_url(src)
                     if "data-src" in img.attrib:
-                        #import ipdb ; ipdb.set_trace()
-                        # img.element.remove("data-src")
                         del img.attrib["data-src"]
                     img.set("src", new_url)
 
-            src = etree.tostring(t, encoding="unicode").strip()
-            md.write(f"\n\n <!-- Tweet {idx}-->\n")
-            md.write(src)
+            # Move Tweet main pic to the top (if any)
+            pic = t.cssselect(".entity-image")
+            if pic:
+                assert len(pic) == 1
+                t.insert(0, pic[0])
+
+            src = etree.tostring(t, encoding="unicode", method="html").strip()
+            body += f"\n\n <!-- Tweet {idx + 1}-->\n"
+            body += src
+
+        md.write(TEMPLATE.format(body=body))
+
+    # Have some basic styles for the example
+    shutil.copy("sample.css", output_path)
 
 
 @click.command()
