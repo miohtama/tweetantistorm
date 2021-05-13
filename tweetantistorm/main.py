@@ -10,7 +10,7 @@ import time
 from typing import Optional, List
 import requests
 from lxml import etree
-from lxml.html import HtmlElement
+from lxml.html import HtmlElement, fragment_fromstring
 from requests_html import HTMLSession, Element
 
 
@@ -40,6 +40,19 @@ TEMPLATE = """
     </body>
 </html>
 """
+
+
+def set_inner_html(elem: HtmlElement, html: str):
+    """Replace innerHTML of a lxml element."""
+
+    # Clear the element contents
+    child: HtmlElement
+    for child in elem.getchildren():
+        elem.remove(child)
+
+    # Create and add new contents
+    content = fragment_fromstring(html)
+    elem.append(content)
 
 
 class ImageRewriterJSONifiedState:
@@ -162,9 +175,24 @@ def scrape(link, output_path, image_src_prefix):
                 orig_href = hashtag.attrib["href"]
                 hashtag.set("href", "https://twitter.com" + orig_href)
 
-            src = f"\n\n <!-- Tweet {idx + 1}-->\n"
+            # Fix permalinks
+            tweet_id = t.attrib["data-tweet"]
+            tweet_url = f"https://twitter.com/web/status/{tweet_id}"
+            for perma in t.cssselect(".tw-permalink"):
+                content = f"""
+                    <a href="{tweet_url}">
+                        <i class="fas fa-link" aria-hidden="true"></i>
+                    </a>
+                """
+                set_inner_html(perma, content)
+
+            if idx != 0:
+                src = "\n"
+            else:
+                src = ""
+            src += f"<!-- Tweet {idx + 1}-->\n"
             src += etree.tostring(t, encoding="unicode", method="html").strip()
-            src = textwrap.indent(src, prefix="                            ")
+            src = textwrap.indent(src, prefix="                        ")
             body += src
 
         md.write(TEMPLATE.format(body=body))
