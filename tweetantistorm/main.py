@@ -178,6 +178,17 @@ def scrape(link, output_path, image_src_prefix):
             # Fix permalinks
             tweet_id = t.attrib["data-tweet"]
             tweet_url = f"https://twitter.com/web/status/{tweet_id}"
+
+            entity: HtmlElement
+            for entity in t.cssselect(".entity-url"):
+                # Filter our junk new lines at the end of the tweet
+                previous: HtmlElement = entity.getprevious()
+                while previous is not None and previous.tag == "br":
+                    to_delete: HtmlElement = previous
+                    previous = previous.getprevious()
+                    to_delete.getparent().remove(to_delete)
+
+            perma: HtmlElement
             for perma in t.cssselect(".tw-permalink"):
                 content = f"""
                     <a href="{tweet_url}">
@@ -186,6 +197,10 @@ def scrape(link, output_path, image_src_prefix):
                 """
                 set_inner_html(perma, content)
 
+            # Move URL previews past perlinks
+            for link_preview in t.cssselect(".entity-url"):
+                t.append(link_preview)
+
             if idx != 0:
                 src = "\n"
             else:
@@ -193,6 +208,7 @@ def scrape(link, output_path, image_src_prefix):
             src += f"<!-- Tweet {idx + 1}-->\n"
             src += etree.tostring(t, encoding="unicode", method="html").strip()
             src = textwrap.indent(src, prefix="                        ")
+
             body += src
 
         md.write(TEMPLATE.format(body=body))
