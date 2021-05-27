@@ -46,13 +46,24 @@ TEMPLATE = """
 MEDIA_OBJECT_TEMPLATE = """
   <a class="link-preview" href="{url}">
     <div class="media">
-      <img class="mr-3" src="{image}" alt="">
+      <img class="mr-3" src="{local_image_path}" alt="">
       <div class="media-body">
         <h5 class="mt-0">{title}</h5>
         {description}
       </div>
     </div>
   </a>"""
+
+MEDIA_OBJECT_NO_IMAGE_TEMPLATE = """
+  <a class="link-preview" href="{url}">
+    <div class="media">
+      <div class="media-body">
+        <h5 class="mt-0">{title}</h5>
+        {description}
+      </div>
+    </div>
+  </a>"""
+
 
 
 def set_inner_html(elem: HtmlElement, html: str):
@@ -239,7 +250,10 @@ def scrape(link, output_path, image_src_prefix, linkpreview_api_key):
                         logger.info("Fetching link preview for %s", orig_href)
                         data = image_rewriter.fetch_linkpreview_data(orig_href)
                         # prev = entity.getprevious()
-                        html = MEDIA_OBJECT_TEMPLATE.format(**data)
+                        if data.get("image"):
+                            html = MEDIA_OBJECT_TEMPLATE.format(**data)
+                        else:
+                            html = MEDIA_OBJECT_NO_IMAGE_TEMPLATE.format(**data)
                         new_element = fragment_fromstring(html)
                         parent: HtmlElement = entity.getparent()
                         entity.addnext(new_element)
@@ -265,7 +279,7 @@ def scrape(link, output_path, image_src_prefix, linkpreview_api_key):
                         <i class="fas fa-link" aria-hidden="true"></i>
                     </a>
                 """
-                set_inner_html(perma, content)
+                perma.getparent().remove(perma)
 
             # Move URL previews past perlinks
             for link_preview in t.cssselect(".entity-url"):
