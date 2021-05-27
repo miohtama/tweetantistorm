@@ -7,25 +7,62 @@
 .nop {
     color: #a4a4a4;
 }
+.content-tweet {
+  line-height: 1.5;
+  margin-bottom: 20px;
+  font-size: 1.3rem;
+}
+
+.nop {
+  color: #a4a4a4;
+}
 
 .entity-image {
-    text-align: center;
-    display: block;
+  text-align: center;
+  display: block;
+  margin-bottom: 20px;
 }
 
 .entity-image img, .entity-video video, .entity-embed .youtube-player, .entity-video-gif video, .entity-embed .twitter-player blockquote {
-    width: 100%;
-    background: #fff;
-    border-radius: 15px;
-    border: solid 1px #e1e8ed;
-    max-width: 100%;
-    font-size: .8rem;
-    margin-top: 10px;
+  width: 100%;
+  background: #fff;
+  border-radius: 15px;
+  border: solid 1px #e1e8ed;
+  max-width: 100%;
+  font-size: .8rem;
+  margin-top: 10px;
 }
 
 .entity-url-preview {
-    border: 1px #e1e8ed solid;
-    border-radius: 8px;
-    margin: 10px 0 0;
+  border: 1px #e1e8ed solid;
+  border-radius: 8px;
+  margin: 10px 0 0;
 }
+
+.link-preview img {
+  max-width: 128px;
+}
+
+.link-preview .media {
+  border: 1px solid #eee;
+  padding: 20px;
+  border-radius: 5px;
+}
+
+.link-preview .media-body {
+  font-size: 1rem;
+  font-weight: normal;
+}
+
+.body-text a.link-preview {
+  text-decoration: none;
+  color: black;
+  margin: 20px 0;
+}
+
+
+.body-text a.link-preview .media:hover {
+  background: #eee;
+}
+
 

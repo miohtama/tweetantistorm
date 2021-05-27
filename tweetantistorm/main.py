@@ -28,7 +28,7 @@ TEMPLATE = """
         <link rel="stylesheet" href="sample.css"></link>
     </head>
     <body>
-        <div class="container narrow pb-5">
+        <div class="container narrow pb-5 body-text">
             <div class="row">
                 <div class="col-12">
                     <div class="tweetstorm">
@@ -51,9 +51,7 @@ MEDIA_OBJECT_TEMPLATE = """
         {description}
       </div>
     </div>
-  </a>
-  `;
-"""
+  </a>"""
 
 
 def set_inner_html(elem: HtmlElement, html: str):
@@ -148,19 +146,23 @@ class ImageRewriterJSONifiedState:
         def fetch_linkpreview_data(self, url) -> dict:
             """Use LinkPreview to get the preview of a link content."""
             if url not in self.state["link_previews"]:
-                q = urlencode(url)
-                api_url = f"http://api.linkpreview.net/?key={self.linkpreview_api_key}&q={q}"
-                data = requests.get(api_url)
+                api_url = f"http://api.linkpreview.net/"
+                data = requests.get(api_url, params={"key": self.linkpreview_api_key, "q": url}).json()
                 image_url = data.get("image")
                 if image_url:
-                    rewrite = self.rewrite_image_url(image_url)
-                    data["rewritten_image_url"] = rewrite
+                    self.rewrite_image_url(image_url)
+                    fname = self.state["mappings"][image_url]
+                    data["local_image_name"] = fname
 
                 self.state["link_previews"][url] = data
 
-            self.save()
-            return self.state["link_previews"][url]
+                self.save()
 
+            data = self.state["link_previews"][url].copy()
+            image_url = data.get("image")
+            if image_url:
+                data["local_image_path"] = os.path.join(self.path_prefix, self.state["mappings"][image_url])
+            return data
 
 def scrape(link, output_path, image_src_prefix, linkpreview_api_key):
     """Read Threader app HTML output and modify it for a local blog post."""
@@ -208,18 +210,24 @@ def scrape(link, output_path, image_src_prefix, linkpreview_api_key):
                 hashtag.set("href", "https://twitter.com" + orig_href)
 
             # Convert Twitter links to link previews
+            # TOOD: Not tested
             if image_rewriter.linkpreview_api_key:
                 entity: HtmlElement
+
+                #print(etree.tostring(t, encoding="unicode", method="html").strip())
+                #import ipdb; ipdb.set_trace()
+
                 for entity in t.cssselect(".entity-url"):
-                    orig_href = hashtag.attrib["href"]
-                    data = image_rewriter.fetch_linkpreview_data(orig_href)
-                    # prev = entity.getprevious()
-                    html = MEDIA_OBJECT_TEMPLATE.format(data)
-                    new_element = fragment_fromstring(html)
-                    parent: HtmlElement = entity.getparent()
-                    t.addnext(new_element)
-                    parent.remove(t)
-                    print("Added", new_element)
+                    orig_href = entity.attrib["href"]
+                    if "hashtag" not in orig_href:
+                        logger.info("Fetching link preview for %s", orig_href)
+                        data = image_rewriter.fetch_linkpreview_data(orig_href)
+                        # prev = entity.getprevious()
+                        html = MEDIA_OBJECT_TEMPLATE.format(**data)
+                        new_element = fragment_fromstring(html)
+                        parent: HtmlElement = entity.getparent()
+                        entity.addnext(new_element)
+                        parent.remove(entity)
 
             # Fix permalinks
             tweet_id = t.attrib["data-tweet"]
@@ -254,7 +262,6 @@ def scrape(link, output_path, image_src_prefix, linkpreview_api_key):
             src += f"<!-- Tweet {idx + 1}-->\n"
             src += etree.tostring(t, encoding="unicode", method="html").strip()
             src = textwrap.indent(src, prefix="                        ")
-
             body += src
 
         md.write(TEMPLATE.format(body=body))
