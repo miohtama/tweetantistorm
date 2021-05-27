@@ -2,7 +2,7 @@ import json
 import os.path
 import shutil
 import textwrap
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode
 
 import click
 import logging
@@ -42,6 +42,20 @@ TEMPLATE = """
 """
 
 
+MEDIA_OBJECT_TEMPLATE = """
+  <a class="link-preview" href="{url}">
+    <div class="media">
+      <img class="mr-3" src="{image}" alt="">
+      <div class="media-body">
+        <h5 class="mt-0">{title}</h5>
+        {description}
+      </div>
+    </div>
+  </a>
+  `;
+"""
+
+
 def set_inner_html(elem: HtmlElement, html: str):
     """Replace innerHTML of a lxml element."""
 
@@ -62,7 +76,7 @@ class ImageRewriterJSONifiedState:
         Simple load/store massive JSON on start up.
         """
 
-        def __init__(self, session: requests.Session, output_path, path_prefix=""):
+        def __init__(self, session: requests.Session, output_path, path_prefix="", linkpreview_api_key=None):
             self.state = None
             self.fname = os.path.join(output_path, "image-rewrites.json")
             # How many second ago we saved the JSON file
@@ -70,12 +84,14 @@ class ImageRewriterJSONifiedState:
             self.session = session
             self.path_prefix = path_prefix
             self.output_path = output_path
+            self.linkpreview_api_key = linkpreview_api_key
 
         def reset(self):
             """Create initial state of nothing scanned."""
             self.state = {
                 "mappings": {},
                 "used_filenames": [],
+                "link_previews": {},
             }
 
         def restore(self):
@@ -129,12 +145,28 @@ class ImageRewriterJSONifiedState:
 
             return os.path.join(self.path_prefix, self.state["mappings"][image_url])
 
+        def fetch_linkpreview_data(self, url) -> dict:
+            """Use LinkPreview to get the preview of a link content."""
+            if url not in self.state["link_previews"]:
+                q = urlencode(url)
+                api_url = f"http://api.linkpreview.net/?key={self.linkpreview_api_key}&q={q}"
+                data = requests.get(api_url)
+                image_url = data.get("image")
+                if image_url:
+                    rewrite = self.rewrite_image_url(image_url)
+                    data["rewritten_image_url"] = rewrite
 
-def scrape(link, output_path, image_src_prefix):
+                self.state["link_previews"][url] = data
+
+            self.save()
+            return self.state["link_previews"][url]
+
+
+def scrape(link, output_path, image_src_prefix, linkpreview_api_key):
     """Read Threader app HTML output and modify it for a local blog post."""
 
     session = requests.Session()
-    image_rewriter = ImageRewriterJSONifiedState(session=session, output_path=output_path, path_prefix=image_src_prefix)
+    image_rewriter = ImageRewriterJSONifiedState(session=session, output_path=output_path, path_prefix=image_src_prefix, linkpreview_api_key=linkpreview_api_key)
 
     image_rewriter.restore()
 
@@ -171,9 +203,23 @@ def scrape(link, output_path, image_src_prefix):
                 t.insert(0, pic[0])
 
             # Fix hashtag links
-            for hashtag in t.cssselect("entity-hashtag"):
+            for hashtag in t.cssselect(".entity-hashtag"):
                 orig_href = hashtag.attrib["href"]
                 hashtag.set("href", "https://twitter.com" + orig_href)
+
+            # Convert Twitter links to link previews
+            if image_rewriter.linkpreview_api_key:
+                entity: HtmlElement
+                for entity in t.cssselect(".entity-url"):
+                    orig_href = hashtag.attrib["href"]
+                    data = image_rewriter.fetch_linkpreview_data(orig_href)
+                    # prev = entity.getprevious()
+                    html = MEDIA_OBJECT_TEMPLATE.format(data)
+                    new_element = fragment_fromstring(html)
+                    parent: HtmlElement = entity.getparent()
+                    t.addnext(new_element)
+                    parent.remove(t)
+                    print("Added", new_element)
 
             # Fix permalinks
             tweet_id = t.attrib["data-tweet"]
@@ -221,8 +267,9 @@ def scrape(link, output_path, image_src_prefix):
 @click.option('--thread-reader-app-link', default=None, help='Link to the threaderapp page', required=True)
 @click.option('--log-level', default="info", help='Python logging level', required=False)
 @click.option('--output-folder', default="out", help='Output folder', required=False)
-@click.option('--image-src-prefix', default="out", help='Prefix for image sources for blog hosting', required=False)
-def main(thread_reader_app_link, log_level, output_folder, image_src_prefix):
+@click.option('--image-src-prefix', default="", help='Prefix for image sources for blog hosting', required=False)
+@click.option('--linkpreview-api-key', default="", help='API key to render link previews using linkpreview.net', required=False)
+def main(thread_reader_app_link, log_level, output_folder, image_src_prefix, linkpreview_api_key=None):
     """Tweetstorm scraper."""
     global logger
     logger = setup_logging(log_level)
@@ -232,7 +279,7 @@ def main(thread_reader_app_link, log_level, output_folder, image_src_prefix):
         logger.info("Storing output in %s", output_folder)
         os.makedirs(output_folder)
 
-    scrape(thread_reader_app_link, output_folder, image_src_prefix)
+    scrape(thread_reader_app_link, output_folder, image_src_prefix, linkpreview_api_key)
 
 
 
