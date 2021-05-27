@@ -1,4 +1,5 @@
 import json
+import mimetypes
 import os.path
 import shutil
 import textwrap
@@ -90,6 +91,7 @@ class ImageRewriterJSONifiedState:
                 "mappings": {},
                 "used_filenames": [],
                 "link_previews": {},
+                "image_index": 1,
             }
 
         def restore(self):
@@ -107,26 +109,31 @@ class ImageRewriterJSONifiedState:
                 json.dump(self.state, f)
             self.last_save = time.time()
 
-        def remap(self, image_url) -> str:
+        def remap(self, image_url, ext) -> str:
             """Get a localised URL for a remote image."""
             path = urlparse(image_url).path
             fname = os.path.basename(path)
-            idx = 0
-            cur_fname = fname
-            while cur_fname in self.state["used_filenames"] and idx < 1000:
-                idx += 1
-                cur_fname = "{idx}_{fname}"
+            idx = self.state["image_index"]
+            cur_fname = f"{idx}{ext}"
             self.state["used_filenames"].append(cur_fname)
+            self.state["image_index"] = self.state["image_index"] + 1
             return cur_fname
 
         def rewrite_image_url(self, image_url):
             if image_url not in self.state["mappings"]:
-                fname = self.remap(image_url)
-                self.state["mappings"][image_url] = fname
-                out_fname = os.path.join(self.output_path, fname)
-                logger.info("Downloading new image %s as %s", image_url, fname)
+
+                logger.info("Downloading new image %s", image_url)
                 resp = self.session.get(image_url)
                 image_data = resp.content
+
+                mimetype = resp.headers["content-type"]
+                ext = mimetypes.guess_extension(mimetype)
+
+                fname = self.remap(image_url, ext)
+                self.state["mappings"][image_url] = fname
+                out_fname = os.path.join(self.output_path, fname)
+
+                logger.info("Saved as %s", fname)
 
                 if not image_data:
                     raise RuntimeError(f"Failed to read image data from {image_url}, status code {resp.status_code}")
@@ -148,8 +155,15 @@ class ImageRewriterJSONifiedState:
             if url not in self.state["link_previews"]:
                 api_url = f"http://api.linkpreview.net/"
                 data = requests.get(api_url, params={"key": self.linkpreview_api_key, "q": url}).json()
+
+                if 'error' in data:
+                    raise RuntimeError(f"{data}")
                 image_url = data.get("image")
+
+                logger.debug("Preview data is %s", data)
+
                 if image_url:
+                    logger.info("Getting preview image for %s %s", url, image_url)
                     self.rewrite_image_url(image_url)
                     fname = self.state["mappings"][image_url]
                     data["local_image_name"] = fname
@@ -157,6 +171,8 @@ class ImageRewriterJSONifiedState:
                 self.state["link_previews"][url] = data
 
                 self.save()
+            else:
+                logger.debug("Already fetched")
 
             data = self.state["link_previews"][url].copy()
             image_url = data.get("image")
